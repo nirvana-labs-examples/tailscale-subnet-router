@@ -1,0 +1,5 @@
+[router]
+router ansible_host=<ROUTER_PUBLIC_IP> ansible_user=ubuntu ansible_ssh_private_key_file=~/.ssh/id_ed25519
+
+[internal]
+internal ansible_host=<INTERNAL_PRIVATE_IP> ansible_user=ubuntu ansible_ssh_private_key_file=~/.ssh/id_ed25519 ansible_ssh_common_args='-o ProxyJump=ubuntu@<ROUTER_PUBLIC_IP>'

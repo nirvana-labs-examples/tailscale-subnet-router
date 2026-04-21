@@ -1,0 +1,185 @@
+---
+# Playbook for Tailscale Subnet Router Setup
+# Run: ansible-playbook -i inventory.ini playbook.yml
+
+- name: Configure Tailscale Subnet Router
+  hosts: router
+  become: yes
+  vars:
+    tailscale_authkey: "{{ lookup('env', 'TAILSCALE_AUTHKEY') }}"
+
+  tasks:
+    - name: Fail if TAILSCALE_AUTHKEY is not set
+      fail:
+        msg: "TAILSCALE_AUTHKEY environment variable is required. Get one from https://login.tailscale.com/admin/settings/keys"
+      when: tailscale_authkey == ""
+
+    - name: Update apt cache
+      apt:
+        update_cache: yes
+        cache_valid_time: 3600
+
+    - name: Install prerequisites
+      apt:
+        name:
+          - curl
+          - gnupg
+        state: present
+
+    - name: Add Tailscale GPG key
+      shell: |
+        curl -fsSL https://pkgs.tailscale.com/stable/ubuntu/noble.noarmor.gpg | tee /usr/share/keyrings/tailscale-archive-keyring.gpg > /dev/null
+      args:
+        creates: /usr/share/keyrings/tailscale-archive-keyring.gpg
+
+    - name: Add Tailscale repository
+      apt_repository:
+        repo: "deb [signed-by=/usr/share/keyrings/tailscale-archive-keyring.gpg] https://pkgs.tailscale.com/stable/ubuntu noble main"
+        state: present
+        filename: tailscale
+
+    - name: Install Tailscale
+      apt:
+        name: tailscale
+        state: present
+        update_cache: yes
+
+    - name: Enable IP forwarding
+      sysctl:
+        name: "{{ item }}"
+        value: '1'
+        sysctl_set: yes
+        state: present
+        reload: yes
+      loop:
+        - net.ipv4.ip_forward
+        - net.ipv6.conf.all.forwarding
+
+    - name: Get VPC CIDR from internal VM
+      set_fact:
+        vpc_cidr: "{{ ansible_default_ipv4.network }}/{{ ansible_default_ipv4.prefix }}"
+
+    - name: Start and enable Tailscale
+      systemd:
+        name: tailscaled
+        state: started
+        enabled: yes
+
+    - name: Authenticate Tailscale and advertise routes
+      shell: |
+        tailscale up --authkey={{ tailscale_authkey }} --advertise-routes={{ vpc_cidr }} --accept-routes --ssh
+      register: tailscale_up
+      changed_when: "'Success' in tailscale_up.stdout or tailscale_up.rc == 0"
+
+    - name: Get Tailscale status
+      command: tailscale status
+      register: tailscale_status
+      changed_when: false
+
+    - name: Get Tailscale IP
+      command: tailscale ip -4
+      register: tailscale_ip
+      changed_when: false
+
+    - name: Save setup info
+      copy:
+        content: |
+          Tailscale Subnet Router
+          =======================
+          Router Public IP: {{ ansible_host }}
+          Router Private IP: {{ ansible_default_ipv4.address }}
+          Tailscale IP: {{ tailscale_ip.stdout }}
+
+          Advertised Routes: {{ vpc_cidr }}
+
+          IMPORTANT: Approve the subnet routes in Tailscale Admin Console:
+          https://login.tailscale.com/admin/machines
+
+          Click on this machine → Edit route settings → Approve routes
+
+          After approval, you can access any VM in {{ vpc_cidr }} from your Tailscale network.
+        dest: /root/tailscale_info.txt
+        mode: '0600'
+
+    - name: Display setup info
+      debug:
+        msg: |
+          ================================================
+          Tailscale Subnet Router Configured!
+          ================================================
+          Tailscale IP: {{ tailscale_ip.stdout }}
+          Advertised Routes: {{ vpc_cidr }}
+
+          NEXT STEPS:
+          1. Go to https://login.tailscale.com/admin/machines
+          2. Find this machine and click on it
+          3. Click "Edit route settings"
+          4. Approve the subnet route: {{ vpc_cidr }}
+
+          After approval, any device on your Tailscale network
+          can access VMs in the VPC using their private IPs.
+          ================================================
+
+- name: Configure Internal Test VM
+  hosts: internal
+  become: yes
+
+  tasks:
+    - name: Update apt cache
+      apt:
+        update_cache: yes
+        cache_valid_time: 3600
+
+    - name: Install nginx
+      apt:
+        name: nginx
+        state: present
+
+    - name: Create test page
+      copy:
+        content: |
+          <!DOCTYPE html>
+          <html>
+          <head>
+            <title>Tailscale Subnet Router Test</title>
+            <style>
+              body { font-family: Arial, sans-serif; max-width: 800px; margin: 50px auto; padding: 20px; }
+              .success { color: #28a745; }
+              code { background: #f4f4f4; padding: 2px 6px; border-radius: 4px; }
+            </style>
+          </head>
+          <body>
+            <h1 class="success">Tailscale Subnet Router Working!</h1>
+            <p>If you can see this page, the subnet router is correctly forwarding traffic to the internal VPC network.</p>
+            <h2>Connection Details</h2>
+            <ul>
+              <li><strong>Internal VM IP:</strong> <code>{{ ansible_default_ipv4.address }}</code></li>
+              <li><strong>Hostname:</strong> <code>{{ ansible_hostname }}</code></li>
+              <li><strong>Accessed via:</strong> Tailscale Subnet Router</li>
+            </ul>
+            <p>This VM has <strong>no public IP</strong> - you reached it through the Tailscale network!</p>
+          </body>
+          </html>
+        dest: /var/www/html/index.html
+        mode: '0644'
+
+    - name: Ensure nginx is running
+      systemd:
+        name: nginx
+        state: started
+        enabled: yes
+
+    - name: Display internal VM info
+      debug:
+        msg: |
+          ================================================
+          Internal Test VM Ready!
+          ================================================
+          Private IP: {{ ansible_default_ipv4.address }}
+
+          Test access from your Tailscale device:
+            curl http://{{ ansible_default_ipv4.address }}
+
+          Or open in browser:
+            http://{{ ansible_default_ipv4.address }}
+          ================================================
