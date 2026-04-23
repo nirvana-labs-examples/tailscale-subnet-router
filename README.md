@@ -17,28 +17,28 @@ Terraform & Ansible example for deploying a Tailscale subnet router that provide
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                  Nirvana VPC (10.x.x.x/24)                  │
-│                                                             │
-│  ┌─────────────────────────┐    ┌───────────────────────┐  │
-│  │   Tailscale Router      │    │    Internal VM        │  │
-│  │   (Public IP)           │    │    (Private IP only)  │  │
-│  │                         │    │                       │  │
-│  │   - Subnet Router       │◄──►│    - nginx test page  │  │
-│  │   - Advertises VPC CIDR │    │    - No public access │  │
-│  │   - IP Forwarding       │    │                       │  │
-│  └───────────┬─────────────┘    └───────────────────────┘  │
-│              │                           ▲                  │
-└──────────────│───────────────────────────│──────────────────┘
-               │                           │
-               │ Tailscale                 │ Via Subnet Router
-               │ Network                   │
-               ▼                           │
-       ┌───────────────┐                   │
-       │  Your Device  │───────────────────┘
-       │  (Tailscale)  │
-       │               │──► Access internal VMs by private IP
-       └───────────────┘──► No VPN client config needed
++---------------------------------------------------------------------+
+|                      Nirvana VPC (10.x.x.x/24)                      |
+|                                                                     |
+|  +---------------------------+    +---------------------------+     |
+|  |    Tailscale Router       |    |      Internal VM          |     |
+|  |    (Public IP)            |    |      (Private IP only)    |     |
+|  |                           |    |                           |     |
+|  |    - Subnet Router        |<-->|      - nginx test page    |     |
+|  |    - Advertises VPC CIDR  |    |      - No public access   |     |
+|  |    - IP Forwarding        |    |                           |     |
+|  +--------------+------------+    +---------------------------+     |
+|                 |                              ^                    |
++-----------------|-----------------------------|--------------------+
+                  |                             |
+                  | Tailscale                   | Via Subnet Router
+                  | Network                     |
+                  v                             |
+          +---------------+                     |
+          |  Your Device  |---------------------+
+          |  (Tailscale)  |
+          |               |--> Access internal VMs by private IP
+          +---------------+--> No VPN client config needed
 ```
 
 ## How It Works
