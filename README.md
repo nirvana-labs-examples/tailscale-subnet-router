@@ -189,3 +189,7 @@ Don't forget to remove the machine from your Tailscale admin console.
 - [Tailscale Auth Keys](https://tailscale.com/kb/1085/auth-keys/)
 - [Tailscale ACLs](https://tailscale.com/kb/1018/acls/)
 - [Nirvana Labs Documentation](https://docs.nirvanalabs.io)
+
+## License
+
+Apache 2.0 — see [LICENSE](LICENSE.md).
